@@ -110,61 +110,65 @@ async def handle_login_for_authorization(
 
 
 # 3. 両方のフローで使われるトークン発行エンドポイント
+# ✨✨ ここからが統合した単一の /token エンドポイント ✨✨
 @app.post("/token")
-# (C) /token エンドポイントでは、フォームデータを受け取るために `OAuth2PasswordRequestForm` を使う
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = FAKE_USERS_DB.get(form_data.username)
-    if not user or user["password"] != form_data.password:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token = create_access_token(data={"sub": user["username"]})
-    return {"access_token": access_token, "token_type": "bearer"}
-
-@app.post("/token")
-async def get_token(
+async def unified_token_endpoint(
+    # grant_type は必須
     grant_type: str = Form(...),
-    client_id: str = Form(...),
-    client_secret: str = Form(...),
+    # 各フローで使われる可能性のあるパラメータをすべてOptionalで定義
+    username: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
+    client_id: Optional[str] = Form(None),
+    client_secret: Optional[str] = Form(None),
     code: Optional[str] = Form(None),
     redirect_uri: Optional[str] = Form(None)
 ):
-    # クライアント認証
+    # --- 1. Password Flow (Swagger UIのID/PW認証用) ---
+    if grant_type == "password":
+        if not username or not password:
+            raise HTTPException(status_code=400, detail="Username and password are required for password grant type")
+        
+        user = FAKE_USERS_DB.get(username)
+        # 実際にはpwd_context.verifyを使う
+        if not user or not pwd_context.verify(password, user["hashed_password"]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password"
+            )
+        
+        subject = f"user:{user['username']}"
+        access_token = create_access_token(data={"sub": subject})
+        return {"access_token": access_token, "token_type": "bearer"}
+
+    # client_id と client_secret は、これ以降のフローで必須
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=400, detail="client_id and client_secret are required")
+
     client = FAKE_CLIENTS_DB.get(client_id)
     if not client or client["secret"] != client_secret:
-        raise HTTPException(status_code=400, detail="Invalid client credentials")
+        raise HTTPException(status_code=401, detail="Invalid client credentials")
 
-    # --- grant_type で処理を分岐 ---
+    # --- 2. Authorization Code Flow ---
     if grant_type == "authorization_code":
-        if not code or code not in AUTH_CODES:
-            raise HTTPException(status_code=400, detail="Invalid authorization code")
+        if not code:
+            raise HTTPException(status_code=400, detail="Authorization code is required")
         
-        auth_code_data = AUTH_CODES[code]
-        if auth_code_data["client_id"] != client_id or auth_code_data["used"]:
+        auth_code_data = AUTH_CODES.get(code)
+        if not auth_code_data or auth_code_data["client_id"] != client_id or auth_code_data["used"]:
             raise HTTPException(status_code=400, detail="Invalid or used authorization code")
         
-        # 認可コードを使用済みにする
         AUTH_CODES[code]["used"] = True
-        
-        # ユーザーのためのアクセストークンを発行
         subject = f"user:{auth_code_data['username']}"
-        access_token = create_access_token(
-            data={"sub": subject},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
+        access_token = create_access_token(data={"sub": subject})
         return {"access_token": access_token, "token_type": "bearer"}
 
+    # --- 3. Client Credentials Flow ---
     elif grant_type == "client_credentials":
-        # マシンのためのアクセストークンを発行
         subject = f"client:{client_id}"
-        access_token = create_access_token(
-            data={"sub": subject},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
+        access_token = create_access_token(data={"sub": subject})
         return {"access_token": access_token, "token_type": "bearer"}
-
+    
+    # --- 4. サポート外のgrant_type ---
     else:
         raise HTTPException(status_code=400, detail="Unsupported grant type")
 
