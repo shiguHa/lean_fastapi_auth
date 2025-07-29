@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Authorize</title>
+</head>
+<body>
+    <h1>Login to grant access</h1>
+    <form action="/authorize" method="post">
+        <input type="hidden" name="client_id" value="{{ client_id }}">
+        <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+        <div>
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username" value="user1">
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" value="password123">
+        </div>
+        <button type="submit">Login and Authorize</button>
+    </form>
+</body>
+</html>
