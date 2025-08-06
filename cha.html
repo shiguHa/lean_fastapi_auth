@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>作業実績 登録UI</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+    }
+
+    .tabs {
+      display: flex;
+      margin-bottom: 10px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      background: #eee;
+      border: 1px solid #ccc;
+      margin-right: 5px;
+    }
+
+    .tab.active {
+      background: #4caf50;
+      color: white;
+      font-weight: bold;
+    }
+
+    .step {
+      display: none;
+    }
+
+    .step.active {
+      display: block;
+    }
+
+    label {
+      display: block;
+      margin-top: 10px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      font-size: 1.2em;
+    }
+
+    .summary {
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+      padding: 10px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>作業実績 登録</h1>
+
+  <div class="tabs">
+    <div class="tab" id="tab-step1">工程</div>
+    <div class="tab" id="tab-step2">S/N or Lot</div>
+    <div class="tab" id="tab-step3">作業者</div>
+    <div class="tab" id="tab-action">アクション</div>
+  </div>
+
+  <div class="step" id="step1">
+    <label>工程コードをスキャンしてください:</label>
+    <input type="text" id="processCode">
+  </div>
+
+  <div class="step" id="step2">
+    <label>S/NまたはLotをスキャンしてください:</label>
+    <input type="text" id="snCode">
+  </div>
+
+  <div class="step" id="step3">
+    <label>作業者コードをスキャンしてください:</label>
+    <input type="text" id="operatorCode">
+  </div>
+
+  <div class="step" id="step-action">
+    <p>完了バーコード または 不良報告バーコードをスキャンしてください。</p>
+    <p>（例：CMD_COMPLETE / CMD_NG_REPORT）</p>
+  </div>
+
+  <div class="summary">
+    <h3>入力内容</h3>
+    <p>工程: <span id="summary-process">---</span></p>
+    <p>S/N: <span id="summary-sn">---</span></p>
+    <p>作業者: <span id="summary-operator">---</span></p>
+    <p>作業日: <span id="summary-date"></span></p>
+    <p>不良理由: <span id="summary-ng">---</span></p>
+  </div>
+
+  <script>
+    const tabs = ['step1', 'step2', 'step3', 'step-action'];
+    let currentStep = 0;
+
+    const now = new Date();
+    document.getElementById('summary-date').innerText = now.toISOString().split('T')[0];
+
+    function updateTabUI() {
+      tabs.forEach((id, index) => {
+        document.getElementById(id).classList.toggle('active', index === currentStep);
+        document.getElementById(`tab-${id}`).classList.toggle('active', index === currentStep);
+      });
+
+      const activeInput = document.querySelector(`#${tabs[currentStep]} input`);
+      if (activeInput) {
+        setTimeout(() => activeInput.focus(), 100);
+      }
+    }
+
+    function goToNextStep() {
+      if (currentStep < tabs.length - 1) {
+        currentStep++;
+        updateTabUI();
+      }
+    }
+
+    // 各入力欄のイベント
+    document.getElementById('processCode').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        document.getElementById('summary-process').innerText = e.target.value;
+        goToNextStep();
+      }
+    });
+
+    document.getElementById('snCode').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        document.getElementById('summary-sn').innerText = e.target.value;
+        goToNextStep();
+      }
+    });
+
+    document.getElementById('operatorCode').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        document.getElementById('summary-operator').innerText = e.target.value;
+        goToNextStep();
+      }
+    });
+
+    // アクションバーコード入力処理（bodyにキー入力）
+    document.body.addEventListener('keydown', e => {
+      if (currentStep !== 3) return;
+      if (e.key === 'Enter') {
+        // 最後に入力された文字列を取得
+        const inputVal = document.activeElement.value;
+        if (inputVal === 'CMD_COMPLETE') {
+          alert('登録完了！データ送信します。');
+          resetForm();
+        } else if (inputVal === 'CMD_NG_REPORT') {
+          const ngReason = prompt('不良理由コードを入力してください（例: NG_01）');
+          document.getElementById('summary-ng').innerText = ngReason || '(未入力)';
+          alert('不良報告完了！データ送信します。');
+          resetForm();
+        }
+      }
+    });
+
+    function resetForm() {
+      document.getElementById('processCode').value = '';
+      document.getElementById('snCode').value = '';
+      document.getElementById('operatorCode').value = '';
+      document.getElementById('summary-process').innerText = '---';
+      document.getElementById('summary-sn').innerText = '---';
+      document.getElementById('summary-operator').innerText = '---';
+      document.getElementById('summary-ng').innerText = '---';
+      currentStep = 0;
+      updateTabUI();
+    }
+
+    updateTabUI(); // 初期表示
+  </script>
+</body>
+</html>

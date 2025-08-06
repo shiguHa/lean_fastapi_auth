@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>製造実績入力 (ウィザード形式)</title>
+    <style>
+        /* CSS */
+        :root {
+            --primary-color: #005aaa;
+            --completed-color: #007bff;
+            --active-color: #ff9900;
+            --light-gray: #f8f9fa;
+            --gray: #6c757d;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--light-gray);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+            overflow: hidden;
+        }
+
+        /* プログレスバー */
+        .progress-bar {
+            display: flex;
+            background-color: #e9ecef;
+            padding: 15px 10px;
+        }
+        .progress-step {
+            flex: 1;
+            text-align: center;
+            color: var(--gray);
+            font-weight: bold;
+            position: relative;
+        }
+        .progress-step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: -50%;
+            transform: translateY(-50%);
+            width: 100%;
+            height: 2px;
+            background-color: #ced4da;
+            z-index: 1;
+        }
+        .progress-step .step-circle {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            border-radius: 50%;
+            background-color: #ced4da;
+            margin-bottom: 5px;
+            position: relative;
+            z-index: 2;
+            transition: all 0.3s ease;
+        }
+        .progress-step.active .step-circle {
+            background-color: var(--active-color);
+            color: white;
+            transform: scale(1.1);
+        }
+        .progress-step.active {
+            color: var(--active-color);
+        }
+        .progress-step.completed .step-circle {
+            background-color: var(--completed-color);
+            color: white;
+        }
+        .progress-step.completed .step-circle::before {
+            content: '✓';
+        }
+        .progress-step.completed:not(:last-child)::after {
+            background-color: var(--completed-color);
+        }
+
+        /* ウィザード本体 */
+        .wizard-content {
+            padding: 30px 40px;
+        }
+        .step-pane {
+            text-align: center;
+        }
+        .step-pane.hidden {
+            display: none;
+        }
+        .step-pane h1 {
+            font-size: 2em;
+            margin-top: 20px;
+            margin-bottom: 30px;
+        }
+        .step-pane h2 {
+            text-align: left;
+        }
+        .step-pane input[type="text"] {
+            width: 80%;
+            max-width: 400px;
+            padding: 15px;
+            font-size: 1.5em;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .step-pane input[type="text"]:focus {
+            outline: none;
+            border-color: var(--active-color);
+        }
+
+        /* Step 3: S/Nスキャン */
+        #step-3 .content-wrapper {
+            display: flex;
+            gap: 30px;
+            text-align: left;
+        }
+        #step-3 .scan-area, #step-3 .list-area {
+            flex: 1;
+        }
+        #step-3 .list-area ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            max-height: 250px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        #step-3 .list-area li {
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #eee;
+        }
+
+        /* ボタン */
+        .btn {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .btn-primary:hover { background-color: #004a8f; }
+        .btn-success { background-color: var(--success-color); color: white; }
+        .btn-success:hover { background-color: #218838; }
+        .btn-danger { background-color: var(--danger-color); color: white; }
+        .btn-danger:hover { background-color: #c82333; }
+        .btn-secondary { background-color: var(--gray); color: white; }
+        .btn-secondary:hover { background-color: #5a6268; }
+
+        .button-group {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 40px;
+        }
+        .button-group .btn {
+            flex: 1;
+        }
+
+        /* フッター */
+        .wizard-footer {
+            padding: 20px 40px;
+            background-color: #f1f3f5;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* 完了画面 */
+        #completion-screen h1 {
+            color: var(--success-color);
+        }
+        #completion-screen .icon {
+            font-size: 5em;
+            color: var(--success-color);
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="progress-bar">
+            <div class="progress-step" id="step-indicator-1"><div class="step-circle">1</div>工程</div>
+            <div class="progress-step" id="step-indicator-2"><div class="step-circle">2</div>作業者</div>
+            <div class="progress-step" id="step-indicator-3"><div class="step-circle">3</div>対象S/N</div>
+            <div class="progress-step" id="step-indicator-4"><div class="step-circle">4</div>確認・登録</div>
+        </div>
+
+        <div class="wizard-content">
+            <div class="step-pane" id="step-1">
+                <h1>工程のバーコードをスキャンしてください</h1>
+                <input type="text" id="process-input" autofocus>
+            </div>
+            <div class="step-pane hidden" id="step-2">
+                <h1>作業者IDカードをスキャンしてください</h1>
+                <input type="text" id="worker-input">
+            </div>
+            <div class="step-pane hidden" id="step-3">
+                <div class="content-wrapper">
+                    <div class="scan-area">
+                        <h2>1. 対象製品をすべてスキャン</h2>
+                        <input type="text" id="sn-scan-input">
+                        <div class="button-group">
+                            <button class="btn btn-primary" id="sn-scan-complete-btn">2. 全てスキャン完了 ▶</button>
+                        </div>
+                    </div>
+                    <div class="list-area">
+                        <h2>スキャン済みリスト (<span id="sn-counter">0</span>個)</h2>
+                        <ul id="sn-list"></ul>
+                    </div>
+                </div>
+            </div>
+            <div class="step-pane hidden" id="step-4">
+                <h2>以下の内容で登録します</h2>
+                <div id="summary-display" style="text-align: left; margin-bottom: 30px;"></div>
+                <h3>作業結果を選択してください</h3>
+                <div class="button-group">
+                    <button class="btn btn-success" id="confirm-ok-btn">✅ すべて正常に完了</button>
+                    <button class="btn btn-danger" id="confirm-ng-btn">❌ 不良品を報告する</button>
+                </div>
+            </div>
+            <div class="step-pane hidden" id="step-5">
+                <h1>不良があった製品のS/Nを再度スキャンしてください</h1>
+                <input type="text" id="ng-sn-select-input">
+                <p style="margin-top: 30px;">
+                    全ての不良品報告が終わったら、下のボタンを押してください。
+                </p>
+                <button class="btn btn-primary" id="ng-reporting-complete-btn">不良報告を完了して登録する ▶</button>
+            </div>
+            <div class="step-pane hidden" id="step-6">
+                <h2 id="ng-reason-target-sn"></h2>
+                <h1>不良理由のバーコードをスキャンしてください</h1>
+                <p>(複数スキャン可能です)</p>
+                <input type="text" id="ng-reason-input">
+                <ul id="ng-reason-list" style="list-style-type: none; padding:10px; background-color: #fffbe6; border:1px solid #ffe58f; max-width: 400px; margin: 20px auto;"></ul>
+                <div class="button-group">
+                    <button class="btn btn-primary" id="ng-reason-complete-btn">この製品の不良理由入力を完了</button>
+                </div>
+            </div>
+            <div class="step-pane hidden" id="completion-screen">
+                <div class="icon">✓</div>
+                <h1>登録が完了しました！</h1>
+                <p>2秒後に最初の画面に戻ります。</p>
+            </div>
+        </div>
+
+        <div class="wizard-footer">
+            <button class="btn btn-secondary" id="back-btn">← 戻る</button>
+            <button class="btn btn-secondary" id="cancel-btn">はじめからやり直す</button>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- 状態管理 ---
+    let currentStep = 1;
+    const formData = {
+        process: null,
+        worker: null,
+        snSet: new Set(),
+        ngData: {} // { "SN-001": ["キズ", "汚れ"] }
+    };
+    let currentProcessingSn = null;
+    const NG_REASON_MAP = { 'NG-01': 'キズ', 'NG-02': '汚れ', 'NG-03': '欠品' };
+
+    // --- DOM要素 ---
+    const stepPanes = document.querySelectorAll('.step-pane');
+    const progressSteps = document.querySelectorAll('.progress-step');
+    const inputs = {
+        process: document.getElementById('process-input'),
+        worker: document.getElementById('worker-input'),
+        snScan: document.getElementById('sn-scan-input'),
+        ngSnSelect: document.getElementById('ng-sn-select-input'),
+        ngReason: document.getElementById('ng-reason-input')
+    };
+    const buttons = {
+        back: document.getElementById('back-btn'),
+        cancel: document.getElementById('cancel-btn'),
+        snScanComplete: document.getElementById('sn-scan-complete-btn'),
+        confirmOk: document.getElementById('confirm-ok-btn'),
+        confirmNg: document.getElementById('confirm-ng-btn'),
+        ngReasonComplete: document.getElementById('ng-reason-complete-btn'),
+        ngReportingComplete: document.getElementById('ng-reporting-complete-btn'),
+    };
+    const ui = {
+        snCounter: document.getElementById('sn-counter'),
+        snList: document.getElementById('sn-list'),
+        summaryDisplay: document.getElementById('summary-display'),
+        ngReasonTargetSn: document.getElementById('ng-reason-target-sn'),
+        ngReasonList: document.getElementById('ng-reason-list'),
+        completionScreen: document.getElementById('completion-screen')
+    };
+
+    // --- ナビゲーション ---
+    function navigateTo(stepNumber) {
+        currentStep = stepNumber;
+        stepPanes.forEach(pane => pane.classList.add('hidden'));
+        document.getElementById(`step-${stepNumber}`).classList.remove('hidden');
+
+        progressSteps.forEach((step, index) => {
+            step.classList.remove('active', 'completed');
+            if (index + 1 < stepNumber) {
+                step.classList.add('completed');
+            } else if (index + 1 === stepNumber) {
+                step.classList.add('active');
+            }
+        });
+
+        buttons.back.style.visibility = (stepNumber > 1) ? 'visible' : 'hidden';
+        
+        // オートフォーカス
+        const inputToFocus = Object.values(inputs).find(input => {
+            return !input.closest('.step-pane').classList.contains('hidden');
+        });
+        if (inputToFocus) inputToFocus.focus();
+    }
+
+    // --- 初期化 ---
+    function init() {
+        Object.assign(formData, { process: null, worker: null, snSet: new Set(), ngData: {} });
+        currentProcessingSn = null;
+        ui.snList.innerHTML = '';
+        ui.snCounter.textContent = '0';
+        ui.completionScreen.classList.add('hidden');
+        navigateTo(1);
+    }
+    
+    // --- イベントハンドラ ---
+    // Step 1: 工程
+    inputs.process.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.value) {
+            formData.process = e.target.value;
+            navigateTo(2);
+        }
+    });
+
+    // Step 2: 作業者
+    inputs.worker.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.value) {
+            formData.worker = e.target.value;
+            navigateTo(3);
+        }
+    });
+    
+    // Step 3: S/Nスキャン
+    inputs.snScan.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.value) {
+            if(formData.snSet.has(e.target.value)) {
+                alert('このS/Nは既にスキャンされています。');
+                e.target.value = '';
+                return;
+            }
+            formData.snSet.add(e.target.value);
+            const li = document.createElement('li');
+            li.textContent = e.target.value;
+            ui.snList.appendChild(li);
+            ui.snCounter.textContent = formData.snSet.size;
+            e.target.value = '';
+        }
+    });
+    buttons.snScanComplete.addEventListener('click', () => {
+        if (formData.snSet.size === 0) {
+            alert('シリアルナンバーを1つ以上スキャンしてください。');
+            return;
+        }
+        // 確認画面の情報を生成
+        ui.summaryDisplay.innerHTML = `
+            <p><strong>工程:</strong> ${formData.process}</p>
+            <p><strong>作業者:</strong> ${formData.worker}</p>
+            <p><strong>対象S/N (${formData.snSet.size}個):</strong> ${Array.from(formData.snSet).join(', ')}</p>
+        `;
+        navigateTo(4);
+    });
+
+    // Step 4: 確認 & アクション
+    buttons.confirmOk.addEventListener('click', () => submitData());
+    buttons.confirmNg.addEventListener('click', () => navigateTo(5));
+    
+    // Step 5: 不良S/N選択
+    inputs.ngSnSelect.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.value) {
+            if (formData.snSet.has(e.target.value)) {
+                currentProcessingSn = e.target.value;
+                ui.ngReasonTargetSn.textContent = `S/N: ${currentProcessingSn}`;
+                ui.ngReasonList.innerHTML = ''; // 前の不良理由をクリア
+                navigateTo(6);
+            } else {
+                alert('スキャン済みリストにないS/Nです。');
+            }
+            e.target.value = '';
+        }
+    });
+    buttons.ngReportingComplete.addEventListener('click', () => submitData());
+    
+    // Step 6: 不良理由入力
+    inputs.ngReason.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target.value) {
+            const reasonText = NG_REASON_MAP[e.target.value] || e.target.value;
+            if (!formData.ngData[currentProcessingSn]) formData.ngData[currentProcessingSn] = [];
+            
+            if(formData.ngData[currentProcessingSn].includes(reasonText)) {
+                alert('この不良理由は既に追加されています。');
+                e.target.value = '';
+                return;
+            }
+            
+            formData.ngData[currentProcessingSn].push(reasonText);
+            const li = document.createElement('li');
+            li.textContent = reasonText;
+            ui.ngReasonList.appendChild(li);
+            e.target.value = '';
+        }
+    });
+    buttons.ngReasonComplete.addEventListener('click', () => {
+        // 不良S/N選択画面に戻る
+        navigateTo(5);
+    });
+
+    // ナビゲーションボタン
+    buttons.back.addEventListener('click', () => {
+        if (currentStep > 1) navigateTo(currentStep - 1);
+    });
+    buttons.cancel.addEventListener('click', () => {
+        if (confirm('作業をはじめからやり直しますか？')) {
+            init();
+        }
+    });
+
+    // --- データ送信 ---
+    function submitData() {
+        const report = {
+            process: formData.process,
+            worker: formData.worker,
+            workDate: new Date().toISOString(),
+            results: []
+        };
+        for (const sn of formData.snSet) {
+            report.results.push({
+                serialNumber: sn,
+                status: formData.ngData[sn] ? 'NG' : 'OK',
+                defects: formData.ngData[sn] || []
+            });
+        }
+        
+        console.log('--- 送信データ ---');
+        console.log(JSON.stringify(report, null, 2));
+
+        stepPanes.forEach(pane => pane.classList.add('hidden'));
+        ui.completionScreen.classList.remove('hidden');
+
+        setTimeout(init, 2000);
+    }
+    
+    // --- アプリケーション開始 ---
+    init();
+});
+</script>
+</body>
+</html>

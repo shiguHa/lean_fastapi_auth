@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>製造実績入力システム (複数S/N対応)</title>
+    <style>
+        /* CSSは前回のものとほぼ同じですが、リスト表示用に少し調整しています */
+        :root {
+            --primary-color: #005aaa;
+            --secondary-color: #f0f8ff;
+            --border-color: #ccc;
+            --focus-color: #ff9900;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        body { font-family: var(--font-family); background-color: #f4f4f9; margin: 0; padding: 20px; display: flex; justify-content: center; color: #333; }
+        .container { width: 100%; max-width: 800px; background: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        #instruction { background-color: var(--primary-color); color: white; padding: 20px; border-radius: 5px; text-align: center; margin-bottom: 25px; transition: background-color 0.3s; }
+        #instruction.success { background-color: var(--success-color); }
+        #instruction.error { background-color: var(--error-color); }
+        #instruction h1 { margin: 0; font-size: 1.8em; }
+        #instruction h2 { margin: 5px 0 0; font-size: 1em; font-weight: normal; opacity: 0.9; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        input[type="text"] { width: calc(100% - 22px); padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 1.2em; background-color: var(--secondary-color); }
+        input:focus { outline: none; border-color: var(--focus-color); box-shadow: 0 0 5px rgba(255, 153, 0, 0.5); }
+        .hidden { display: none; }
+        
+        #sn-list-area { margin-top: 20px; }
+        #scanned-sn-list { list-style-type: none; padding: 0; margin: 10px 0; max-height: 200px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; }
+        #scanned-sn-list li { padding: 8px 12px; border-bottom: 1px solid #eee; background-color: #f9f9f9; }
+        #scanned-sn-list li:last-child { border-bottom: none; }
+        #scanned-sn-list li.is-ng { background-color: #fff0f0; color: var(--error-color); font-weight: bold; }
+        #sn-scan-input { background-color: white; }
+        #sn-counter { font-weight: bold; }
+        
+        #ng-mode-area { margin-top: 25px; padding-top: 20px; border-top: 2px dashed var(--border-color); }
+        #ng-target-sn { font-size: 1.2em; font-weight: bold; color: var(--primary-color); background-color: var(--secondary-color); padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+        #ng-table { width: 100%; border-collapse: collapse; }
+        #ng-table th, #ng-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+
+        .action-guide { margin-top: 30px; padding: 15px; background-color: #e9ecef; border-radius: 5px; border-left: 5px solid var(--primary-color); }
+        .action-guide code { background-color: #d1d1d1; padding: 3px 6px; border-radius: 3px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="instruction">
+            <h1>読み込み中...</h1>
+        </div>
+
+        <div class="main-form">
+            <div class="form-group">
+                <label for="process">工程</label>
+                <input type="text" id="process" readonly>
+            </div>
+            <div class="form-group">
+                <label for="worker">作業者</label>
+                <input type="text" id="worker" readonly>
+            </div>
+        </div>
+
+        <div id="sn-list-area" class="hidden">
+            <div class="form-group">
+                <label for="sn-scan-input">シリアルナンバーをスキャン (<span id="sn-counter">0</span>個)</label>
+                <input type="text" id="sn-scan-input">
+                <ul id="scanned-sn-list"></ul>
+            </div>
+        </div>
+
+        <div id="ng-mode-area" class="hidden">
+            <p><strong>不良報告モード</strong></p>
+            <div id="ng-target-sn" class="hidden"></div>
+            <table id="ng-table">
+                <thead><tr><th>S/N</th><th>不良理由</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <input type="text" id="hidden-input" style="position: absolute; left: -9999px;">
+
+        <div class="action-guide">
+            <h3>シミュレーション用バーコード値</h3>
+            <ul>
+                <li><b>工程/作業者:</b> <code>P-101</code>, <code>E-007</code></li>
+                <li><b>シリアルナンバー:</b> <code>SN-001</code>, <code>SN-002</code>, <code>SN-003</code>, ...</li>
+                <li><b>不良理由:</b> <code>NG-01</code> (キズ), <code>NG-02</code> (汚れ)</li>
+                <li><b>アクション:</b>
+                    <ul>
+                        <li><code id="code-scan-complete">CMD_SCAN_COMPLETE</code> (S/Nスキャン完了)</li>
+                        <li><code>CMD_COMPLETE</code> (登録)</li>
+                        <li><code>CMD_NG_REPORT</code> (不良報告開始)</li>
+                        <li><code>CMD_CANCEL</code> (全キャンセル)</li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- DOM要素 ---
+    const instruction = document.getElementById('instruction');
+    const instructionH1 = instruction.querySelector('h1');
+    const instructionH2 = document.createElement('h2');
+    instruction.appendChild(instructionH2);
+
+    const processInput = document.getElementById('process');
+    const workerInput = document.getElementById('worker');
+    const hiddenInput = document.getElementById('hidden-input');
+
+    const snListArea = document.getElementById('sn-list-area');
+    const snScanInput = document.getElementById('sn-scan-input');
+    const snListUl = document.getElementById('scanned-sn-list');
+    const snCounter = document.getElementById('sn-counter');
+
+    const ngModeArea = document.getElementById('ng-mode-area');
+    const ngTargetSnDiv = document.getElementById('ng-target-sn');
+    const ngTableBody = document.getElementById('ng-table').querySelector('tbody');
+
+    // --- 状態管理 ---
+    let state = '';
+    let formData = {};
+    let scannedSn = new Set();
+    let ngData = {}; // { "SN-001": ["キズ", "汚れ"], "SN-002": ["欠品"] }
+    let currentProcessingSn = '';
+    
+    const NG_REASON_MAP = { 'NG-01': 'キズ', 'NG-02': '汚れ', 'NG-03': '欠品' };
+
+    // --- 初期化 ---
+    function init() {
+        state = 'PROCESS';
+        formData = { process: '', worker: '', workDate: new Date().toLocaleDateString('ja-JP') };
+        scannedSn.clear();
+        ngData = {};
+        currentProcessingSn = '';
+
+        processInput.value = '';
+        workerInput.value = '';
+        snListUl.innerHTML = '';
+        ngTableBody.innerHTML = '';
+        snCounter.textContent = '0';
+        
+        [snListArea, ngModeArea, ngTargetSnDiv].forEach(el => el.classList.add('hidden'));
+        instruction.className = '';
+        
+        updateInstruction('工程コードをスキャンしてください');
+        hiddenInput.value = '';
+        processInput.removeAttribute('readonly');
+        processInput.focus();
+    }
+
+    // --- UI更新 ---
+    function updateInstruction(h1, h2 = '') {
+        instructionH1.textContent = h1;
+        instructionH2.textContent = h2;
+    }
+    
+    function focusOn(element) {
+        // 全ての入力欄を一旦readonlyにする
+        [processInput, workerInput, snScanInput, hiddenInput].forEach(el => el.setAttribute('readonly', 'true'));
+        // 対象の入力欄のみ書き込み可能にしてフォーカス
+        element.removeAttribute('readonly');
+        element.value = '';
+        element.focus();
+    }
+    
+    function addSnToList(sn) {
+        if (scannedSn.has(sn)) {
+            alert(`エラー: ${sn} は既にスキャンされています。`);
+            return;
+        }
+        scannedSn.add(sn);
+        const li = document.createElement('li');
+        li.id = `sn-li-${sn}`;
+        li.textContent = sn;
+        snListUl.appendChild(li);
+        snCounter.textContent = scannedSn.size;
+    }
+
+    // --- メインロジック ---
+    function handleEnter(target) {
+        const value = target.value;
+        if (value === 'CMD_CANCEL') { init(); return; }
+
+        switch(state) {
+            case 'PROCESS':
+                formData.process = value;
+                processInput.value = value;
+                state = 'WORKER';
+                updateInstruction('作業者コードをスキャンしてください');
+                focusOn(workerInput);
+                break;
+            
+            case 'WORKER':
+                formData.worker = value;
+                workerInput.value = value;
+                state = 'SN_SCAN';
+                snListArea.classList.remove('hidden');
+                updateInstruction('シリアルナンバーを連続でスキャンしてください', `完了したら [${document.getElementById('code-scan-complete').textContent}] をスキャン`);
+                focusOn(snScanInput);
+                break;
+
+            case 'SN_SCAN':
+                if (value === 'CMD_SCAN_COMPLETE') {
+                    if (scannedSn.size === 0) {
+                        alert('S/Nが1つもスキャンされていません。');
+                        focusOn(snScanInput);
+                        return;
+                    }
+                    state = 'ACTION';
+                    updateInstruction('アクションを選択してください', '[完了] または [不良報告] をスキャン');
+                    focusOn(hiddenInput);
+                } else {
+                    addSnToList(value);
+                    focusOn(snScanInput);
+                }
+                break;
+            
+            case 'ACTION':
+                if (value === 'CMD_COMPLETE') {
+                    submitData();
+                } else if (value === 'CMD_NG_REPORT') {
+                    state = 'NG_SELECT_SN';
+                    ngModeArea.classList.remove('hidden');
+                    updateInstruction('不良があったS/Nを再度スキャンしてください', '全て入力したら [完了] をスキャン');
+                    focusOn(hiddenInput);
+                }
+                break;
+
+            case 'NG_SELECT_SN':
+                if (value === 'CMD_COMPLETE') {
+                    submitData();
+                    return;
+                }
+                if (scannedSn.has(value)) {
+                    currentProcessingSn = value;
+                    ngTargetSnDiv.textContent = `対象S/N: ${currentProcessingSn}`;
+                    ngTargetSnDiv.classList.remove('hidden');
+                    state = 'NG_INPUT_REASON';
+                    updateInstruction(`${currentProcessingSn} の不良理由をスキャンしてください`);
+                    focusOn(hiddenInput);
+                } else {
+                    alert('リストにないS/Nです。');
+                    focusOn(hiddenInput);
+                }
+                break;
+            
+            case 'NG_INPUT_REASON':
+                const reasonText = NG_REASON_MAP[value];
+                if (reasonText) {
+                    if (!ngData[currentProcessingSn]) ngData[currentProcessingSn] = [];
+                    // 重複チェック
+                    if(ngData[currentProcessingSn].includes(reasonText)) {
+                         alert(`${reasonText} は既に追加されています。`);
+                         focusOn(hiddenInput);
+                         return;
+                    }
+                    ngData[currentProcessingSn].push(reasonText);
+                    
+                    // テーブル表示更新
+                    const tr = ngTableBody.insertRow();
+                    tr.insertCell(0).textContent = currentProcessingSn;
+                    tr.insertCell(1).textContent = reasonText;
+                    
+                    // 元のリストの見た目を変更
+                    document.getElementById(`sn-li-${currentProcessingSn}`).classList.add('is-ng');
+
+                    updateInstruction(`${currentProcessingSn} の次の不良理由をスキャン`, `なければ別の不良S/N、または [完了] をスキャン`);
+                } else {
+                    alert(`不明な不良コード: ${value}`);
+                }
+                // 続けて同じS/Nの不良理由を入力するか、別のS/Nの不良を報告するかに備える
+                state = 'NG_SELECT_SN'; 
+                ngTargetSnDiv.classList.add('hidden');
+                focusOn(hiddenInput);
+                break;
+        }
+    }
+    
+    // --- データ送信 ---
+    function submitData() {
+        const report = {
+            common: formData,
+            results: []
+        };
+        for (const sn of scannedSn) {
+            report.results.push({
+                serialNumber: sn,
+                status: ngData[sn] ? 'NG' : 'OK',
+                defects: ngData[sn] || []
+            });
+        }
+        
+        console.log('--- 送信データ ---');
+        console.log(JSON.stringify(report, null, 2));
+
+        instruction.className = 'success';
+        updateInstruction('登録が完了しました！');
+
+        setTimeout(init, 3000);
+    }
+
+    // --- イベントリスナー ---
+    [processInput, workerInput, snScanInput, hiddenInput].forEach(input => {
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleEnter(e.target);
+            }
+        });
+    });
+
+    // --- アプリケーション開始 ---
+    init();
+});
+</script>
+</body>
+</html>

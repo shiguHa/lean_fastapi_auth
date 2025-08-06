@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>製造実績入力システム (バーコードリーダー対応)</title>
+    <style>
+        /* CSS */
+        :root {
+            --primary-color: #005aaa;
+            --secondary-color: #f0f8ff;
+            --border-color: #ccc;
+            --focus-color: #ff9900;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            color: #333;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        #instruction {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+            margin-bottom: 25px;
+            transition: background-color 0.3s;
+        }
+        
+        #instruction.success {
+            background-color: var(--success-color);
+        }
+
+        #instruction h1 {
+            margin: 0;
+            font-size: 1.8em;
+        }
+        
+        #instruction h2 {
+            margin: 5px 0 0;
+            font-size: 1em;
+            font-weight: normal;
+            opacity: 0.9;
+        }
+
+        .main-form .form-group {
+            margin-bottom: 15px;
+        }
+
+        .main-form label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .main-form input[type="text"] {
+            width: calc(100% - 20px);
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 1.2em;
+            background-color: var(--secondary-color);
+        }
+
+        /* 現在フォーカスされている入力欄を強調 */
+        .main-form input[type="text"]:focus,
+        .ng-input-area input[type="text"]:focus {
+            outline: none;
+            border-color: var(--focus-color);
+            box-shadow: 0 0 5px rgba(255, 153, 0, 0.5);
+        }
+        
+        /* 非表示クラス */
+        .hidden {
+            display: none;
+        }
+
+        #ng-mode-area {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 2px dashed var(--border-color);
+        }
+
+        #ng-list-a, #ng-table-b {
+            margin-top: 10px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            min-height: 50px;
+        }
+
+        #ng-table-b {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        #ng-table-b th, #ng-table-b td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        #ng-table-b th {
+            background-color: #efefef;
+        }
+
+        .ng-input-area {
+            margin-top: 15px;
+        }
+        .ng-input-area label {
+            font-weight: bold;
+        }
+        .ng-input-area input {
+            width: 50%;
+            padding: 8px;
+            font-size: 1em;
+            margin-top: 5px;
+        }
+
+        .action-guide {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 5px;
+            border-left: 5px solid var(--primary-color);
+        }
+        .action-guide h3 {
+            margin-top: 0;
+        }
+        .action-guide code {
+            background-color: #d1d1d1;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="instruction">
+            <h1>読み込み中...</h1>
+        </div>
+
+        <div class="main-form">
+            <div class="form-group">
+                <label for="process">工程</label>
+                <input type="text" id="process">
+            </div>
+            <div class="form-group">
+                <label for="serialLot">S/N または Lot</label>
+                <input type="text" id="serialLot">
+            </div>
+            <div class="form-group">
+                <label for="worker">作業者</label>
+                <input type="text" id="worker">
+            </div>
+            <div class="form-group">
+                <label for="workDate">作業日</label>
+                <input type="text" id="workDate" readonly>
+            </div>
+        </div>
+        
+        <input type="text" id="hidden-input" style="position: absolute; left: -9999px;">
+
+        <div id="ng-mode-area" class="hidden">
+            <div id="ng-mode-a" class="hidden">
+                <ul id="ng-list-a"></ul>
+            </div>
+            <div id="ng-mode-b" class="hidden">
+                <table id="ng-table-b">
+                    <thead>
+                        <tr><th>不良理由</th><th>数量</th></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                <div class="ng-input-area">
+                    <label>不良理由:</label> <span id="current-ng-reason"></span><br>
+                    <label>数量:</label> <span id="current-ng-quantity"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-guide">
+            <h3>シミュレーション用バーコード値</h3>
+            <p>キーボードで以下の値を入力し、Enterキーを押してスキャンを試せます。</p>
+            <ul>
+                <li><b>工程:</b> <code>P-101</code>, <code>P-205</code></li>
+                <li><b>S/N (モードA用):</b> <code>SN-12345</code></li>
+                <li><b>Lot (モードB用):</b> <code>LOT-67890</code></li>
+                <li><b>作業者:</b> <code>E-007</code></li>
+                <li><b>アクション:</b> <code>CMD_COMPLETE</code>, <code>CMD_NG_REPORT</code>, <code>CMD_CANCEL</code></li>
+                <li><b>不良理由:</b> <code>NG-01</code> (キズ), <code>NG-02</code> (汚れ), <code>NG-03</code> (欠品)</li>
+                <li><b>数量(モードB用):</b> <code>1</code>, <code>2</code>, ... , <code>9</code>, <code>0</code></li>
+                <li><b>数量確定(モードB用):</b> <code>INPUT_CONFIRM</code></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+    // JavaScript
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM要素の取得 ---
+        const instruction = document.getElementById('instruction');
+        const instructionH1 = instruction.querySelector('h1');
+        const instructionH2 = document.createElement('h2');
+        instruction.appendChild(instructionH2);
+        
+        const processInput = document.getElementById('process');
+        const serialLotInput = document.getElementById('serialLot');
+        const workerInput = document.getElementById('worker');
+        const workDateInput = document.getElementById('workDate');
+        const hiddenInput = document.getElementById('hidden-input');
+
+        const ngModeArea = document.getElementById('ng-mode-area');
+        const ngModeA = document.getElementById('ng-mode-a');
+        const ngListA = document.getElementById('ng-list-a');
+        const ngModeB = document.getElementById('ng-mode-b');
+        const ngTableBBody = ngModeB.querySelector('tbody');
+        const currentNgReasonSpan = document.getElementById('current-ng-reason');
+        const currentNgQuantitySpan = document.getElementById('current-ng-quantity');
+        
+        // --- 状態管理用変数 ---
+        let state = '';
+        let formData = {};
+        let ngItems = [];
+        let currentNgItem = {};
+
+        // --- 定数 ---
+        const NG_REASON_MAP = {
+            'NG-01': 'キズ',
+            'NG-02': '汚れ',
+            'NG-03': '欠品'
+        };
+
+        // --- 初期化関数 ---
+        function init() {
+            state = 'PROCESS';
+            formData = { process: '', serialLot: '', worker: '', workDate: '' };
+            ngItems = [];
+            currentNgItem = {};
+
+            // フォームリセット
+            processInput.value = '';
+            serialLotInput.value = '';
+            workerInput.value = '';
+            workDateInput.value = new Date().toLocaleDateString('ja-JP');
+            
+            // UIリセット
+            ngListA.innerHTML = '';
+            ngTableBBody.innerHTML = '';
+            currentNgReasonSpan.textContent = '';
+            currentNgQuantitySpan.textContent = '';
+            ngModeArea.classList.add('hidden');
+            ngModeA.classList.add('hidden');
+            ngModeB.classList.add('hidden');
+            instruction.classList.remove('success');
+
+            updateInstruction('工程コードをスキャンしてください');
+            
+            // 最初の入力欄にフォーカス
+            processInput.focus();
+        }
+
+        // --- UI更新関数 ---
+        function updateInstruction(h1, h2 = '') {
+            instructionH1.textContent = h1;
+            instructionH2.textContent = h2;
+        }
+
+        // --- メインロジック ---
+        function handleEnter(value) {
+            switch (state) {
+                case 'PROCESS':
+                    formData.process = value;
+                    processInput.value = value;
+                    state = 'SERIAL_LOT';
+                    updateInstruction('S/N または Lotをスキャンしてください');
+                    serialLotInput.focus();
+                    break;
+                case 'SERIAL_LOT':
+                    formData.serialLot = value;
+                    serialLotInput.value = value;
+                    state = 'WORKER';
+                    updateInstruction('作業者コードをスキャンしてください');
+                    workerInput.focus();
+                    break;
+                case 'WORKER':
+                    formData.worker = value;
+                    workerInput.value = value;
+                    state = 'ACTION';
+                    updateInstruction('アクションを選択してください', '[完了] または [不良報告] をスキャン');
+                    hiddenInput.focus();
+                    break;
+                case 'ACTION':
+                    handleAction(value);
+                    break;
+                case 'NG_A':
+                    handleNgA(value);
+                    break;
+                case 'NG_B_REASON':
+                    handleNgBReason(value);
+                    break;
+                case 'NG_B_QUANTITY':
+                    handleNgBQuantity(value);
+                    break;
+            }
+        }
+
+        function handleAction(command) {
+            switch (command) {
+                case 'CMD_COMPLETE':
+                    submitData();
+                    break;
+                case 'CMD_NG_REPORT':
+                    startNgMode();
+                    break;
+                case 'CMD_CANCEL':
+                    init();
+                    break;
+                default:
+                    // 不明なコマンドは無視
+                    hiddenInput.value = '';
+                    hiddenInput.focus();
+            }
+        }
+
+        function startNgMode() {
+            ngModeArea.classList.remove('hidden');
+            const serialLotValue = formData.serialLot.toUpperCase();
+            
+            if (serialLotValue.startsWith('SN')) { // S/Nの場合
+                state = 'NG_A';
+                ngModeA.classList.remove('hidden');
+                updateInstruction('不良理由をスキャンしてください', '完了したら [CMD_COMPLETE] をスキャン');
+                hiddenInput.focus();
+            } else if (serialLotValue.startsWith('LOT')) { // Lotの場合
+                state = 'NG_B_REASON';
+                ngModeB.classList.remove('hidden');
+                updateInstruction('不良理由をスキャンしてください', 'なければ [CMD_COMPLETE] をスキャン');
+                hiddenInput.focus();
+            } else {
+                alert('S/NかLotか不明です。入力値を確認してください。');
+                state = 'SERIAL_LOT';
+                serialLotInput.value = '';
+                serialLotInput.focus();
+                ngModeArea.classList.add('hidden');
+            }
+        }
+
+        // モードA (S/N) の処理
+        function handleNgA(value) {
+            if (value === 'CMD_COMPLETE') {
+                submitData();
+                return;
+            }
+            const reasonText = NG_REASON_MAP[value];
+            if (reasonText) {
+                ngItems.push({ reason: reasonText });
+                const li = document.createElement('li');
+                li.textContent = reasonText;
+                ngListA.appendChild(li);
+            } else {
+                alert(`不明な不良コード: ${value}`);
+            }
+            hiddenInput.value = '';
+            hiddenInput.focus();
+        }
+
+        // モードB (Lot) の処理 - 不良理由
+        function handleNgBReason(value) {
+            if (value === 'CMD_COMPLETE') {
+                submitData();
+                return;
+            }
+            const reasonText = NG_REASON_MAP[value];
+            if (reasonText) {
+                currentNgItem = { reason: reasonText };
+                currentNgReasonSpan.textContent = reasonText;
+                state = 'NG_B_QUANTITY';
+                updateInstruction('数量を入力してください', 'テンキーで入力後 [INPUT_CONFIRM] をスキャン');
+            } else {
+                alert(`不明な不良コード: ${value}`);
+            }
+            hiddenInput.value = '';
+            hiddenInput.focus();
+        }
+        
+        // モードB (Lot) の処理 - 数量
+        function handleNgBQuantity(value) {
+            if (value === 'INPUT_CONFIRM') {
+                if (!currentNgItem.quantity) {
+                    alert('数量が入力されていません。');
+                    hiddenInput.value = '';
+                    hiddenInput.focus();
+                    return;
+                }
+                // 確定処理
+                ngItems.push(currentNgItem);
+                
+                // テーブルに行を追加
+                const tr = ngTableBBody.insertRow();
+                tr.insertCell(0).textContent = currentNgItem.reason;
+                tr.insertCell(1).textContent = currentNgItem.quantity;
+
+                //リセットして次の不良理由入力へ
+                currentNgItem = {};
+                currentNgReasonSpan.textContent = '';
+                currentNgQuantitySpan.textContent = '';
+                hiddenInput.value = '';
+                state = 'NG_B_REASON';
+                updateInstruction('次の不良理由をスキャンしてください', 'なければ [CMD_COMPLETE] をスキャン');
+                hiddenInput.focus();
+                
+            } else if (!isNaN(parseInt(value))) { // 数字の場合
+                // 連続する数字入力を結合
+                currentNgItem.quantity = (currentNgItem.quantity || '') + value;
+                currentNgQuantitySpan.textContent = currentNgItem.quantity;
+                hiddenInput.value = '';
+                hiddenInput.focus();
+            } else {
+                alert(`不明な入力: ${value}`);
+                hiddenInput.value = '';
+                hiddenInput.focus();
+            }
+        }
+
+        // データ送信（シミュレーション）
+        function submitData() {
+            const finalData = {
+                ...formData,
+                defects: ngItems,
+                timestamp: new Date().toISOString()
+            };
+            
+            console.log('--- 送信データ ---');
+            console.log(JSON.stringify(finalData, null, 2));
+
+            instruction.classList.add('success');
+            updateInstruction('登録が完了しました！');
+
+            setTimeout(init, 2000); // 2秒後にリセット
+        }
+
+
+        // --- イベントリスナーの設定 ---
+        [processInput, serialLotInput, workerInput, hiddenInput].forEach(input => {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault(); // フォームのデフォルト送信をキャンセル
+                    handleEnter(e.target.value);
+                    // hiddenInput以外は入力後にクリアしない
+                    if(e.target.id === 'hidden-input') {
+                        e.target.value = '';
+                    }
+                }
+            });
+        });
+
+        // --- アプリケーション開始 ---
+        init();
+    });
+    </script>
+
+</body>
+</html>
